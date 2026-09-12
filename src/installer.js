@@ -311,7 +311,6 @@ function ensurePnpm(run) {
  * 通用文案。
  */
 function restartCommand(launchAgentsDir = join(homedir(), 'Library', 'LaunchAgents')) {
-  if (process.platform !== 'darwin') return null
   let uid
   try { uid = userInfo().uid } catch { return null }
   let entries = []
