@@ -37,6 +37,9 @@ dsh plugin --profile web add @weibaohui/dsh-fde-tools
 - **快照还原**：pnpm 在 profile 里跑 add 有清掉 `link:`/`file:` 依赖的前科，
   安装前把依赖和 bundles 快照到 `<profile>/.fde-tools-install-snapshot.json`，
   装完 diff，丢了就按快照补回再 `pnpm install`（≤2 轮），仍失败则报错并给出快照路径。
+- **构建脚本自动放行**：依赖带安装期构建脚本（如 dsh-git-server 的 better-sqlite3）时，
+  pnpm 会拦下并退出非零；引导器识别 `ERR_PNPM_IGNORED_BUILDS`，把包以
+  `包名@版本: true` 写进 `pnpm-workspace.yaml` 的 `allowBuilds` 后自动重试一次。
 - 已在 profile 依赖里的成员（无论 npm / link / github spec）一律跳过，不会覆盖现有安装方式。
 
 ### 环境变量

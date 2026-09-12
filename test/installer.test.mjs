@@ -233,3 +233,49 @@ test('captureBootBundles：读不出 manifest 时给空集', (t) => {
   const dir = tmp(t)
   assert.equal(installer.captureBootBundles(join(dir, 'nope')).size, 0)
 })
+
+test('install：pnpm 拦构建脚本 → 自动写 allowBuilds 并重试成功', async (t) => {
+  const dir = tmp(t)
+  const profileDir = makeProfile(dir, {})
+  let addCalls = 0
+  const fake = {
+    calls: [],
+    run: async (file, args, cwd) => {
+      fake.calls.push({ file, args, cwd })
+      if (args.includes('--version')) return { code: 0, stdout: '9.0.0', stderr: '' }
+      if (args.includes('add')) {
+        addCalls++
+        if (addCalls === 1) return { code: 1, stdout: '[ERR_PNPM_IGNORED_BUILDS] Ignored build scripts: better-sqlite3@11.10.0\n', stderr: '' }
+        // 第二次成功：像真 pnpm 一样落依赖
+        const manifest = readManifest(profileDir)
+        for (const spec of args.filter((a) => a !== 'add' && a.startsWith('@weibaohui/'))) {
+          const at = spec.lastIndexOf('@')
+          manifest.dependencies = { ...manifest.dependencies, [spec.slice(0, at)]: spec.slice(at + 1) }
+        }
+        writeFileSync(join(profileDir, 'package.json'), JSON.stringify(manifest, null, 2))
+        return { code: 0, stdout: 'done', stderr: '' }
+      }
+      return { code: 0, stdout: '', stderr: '' }
+    },
+  }
+  const r = await installer.install(profileDir, ['@weibaohui/dsh-kb'], { _run: fake.run, _pnpm: FAKE_PNPM })
+  assert.equal(r.ok, true, r.error || '')
+  assert.equal(addCalls, 2, '应重试一次 add')
+  const ws = readFileSync(join(profileDir, 'pnpm-workspace.yaml'), 'utf8')
+  assert.match(ws, /allowBuilds:\n  better-sqlite3@11\.10\.0: true\n/)
+  assert.equal(readManifest(profileDir).dependencies['@weibaohui/dsh-kb'], '^0.7.2')
+})
+
+test('parseIgnoredBuilds / ensureAllowBuilds：多包解析与既有段去重', (t) => {
+  assert.deepEqual(
+    installer.parseIgnoredBuilds('Ignored build scripts: better-sqlite3@11.10.0, node-pty@1.0.0 and sharp@0.33.0'),
+    ['better-sqlite3@11.10.0', 'node-pty@1.0.0', 'sharp@0.33.0'],
+  )
+  const dir = tmp(t)
+  const profileDir = makeProfile(dir, {})
+  assert.equal(installer.ensureAllowBuilds(profileDir, ['a@1.0.0']), true)
+  assert.equal(installer.ensureAllowBuilds(profileDir, ['a@1.0.0', 'b@2.0.0']), true)
+  assert.equal(installer.ensureAllowBuilds(profileDir, ['b@2.0.0']), false)
+  const ws = readFileSync(join(profileDir, 'pnpm-workspace.yaml'), 'utf8')
+  assert.match(ws, /allowBuilds:\n  a@1\.0\.0: true\n  b@2\.0\.0: true\n$/)
+})

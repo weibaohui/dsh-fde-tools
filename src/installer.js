@@ -314,6 +314,67 @@ function status(profileDir, bootBundles) {
 
 const SNAPSHOT_NAME = '.fde-tools-install-snapshot.json'
 
+/** 从 pnpm 输出里抠被拦构建脚本的包名（如 better-sqlite3@11.10.0，逗号/空格分隔多个）。 */
+function parseIgnoredBuilds(text) {
+  const out = new Set()
+  const re = /Ignored build scripts?:\s*([^\n]+)/g
+  for (let m; (m = re.exec(text));) {
+    for (const part of m[1].split(/[,\s]+/)) {
+      if (part && part !== 'and' && part.includes('@')) out.add(part.replace(/[.,]$/, ''))
+    }
+  }
+  return [...out]
+}
+
+/**
+ * 把包写进 pnpm-workspace.yaml 的 allowBuilds。pnpm 11 的键必须带版本
+ * （better-sqlite3@11.10.0: true 才生效；裸包名会被 pnpm 换成 "set this to true
+ * or false" 占位串且不装），scoped 名是 @ 开头的裸标量非法，要加引号。
+ * 无文件则按 dsh 的 profile 模板新建；段已存在时收集既有键补缺。
+ * 返回是否有改动。
+ */
+function ensureAllowBuilds(profileDir, pkgs) {
+  const key = (n) => (n.startsWith('@') ? `'${n}'` : n) // YAML 裸标量不能以 @ 开头
+  const norm = (n) => n.replace(/^['"]|['"]$/g, '')
+  const path = join(profileDir, 'pnpm-workspace.yaml')
+  let text
+  try { text = readFileSync(path, 'utf8') } catch {
+    text = 'packages:\n  - .\n\nnodeLinker: hoisted\nautoInstallPeers: false\n'
+  }
+  const lines = text.replace(/\n+$/, '').split('\n')
+  const header = 'allowBuilds:'
+  const hi = lines.indexOf(header)
+  if (hi >= 0) {
+    let i = hi + 1
+    const existing = new Set()
+    const keep = []
+    while (i < lines.length && /^\s+\S/.test(lines[i])) {
+      const line = lines[i]
+      const listItem = /^\s+-\s+(.+)$/.exec(line)
+      const placeholder = /^\s+('[^']+'|[^:#\s]+):\s*set this to true or false\s*$/.exec(line)
+      if (listItem) {
+        keep.push(`  ${key(listItem[1].trim())}: true`) // 老式列表行换 map 行
+      } else if (placeholder) {
+        const name = norm(placeholder[1])
+        existing.add(name)
+        keep.push(`  ${key(name)}: true`) // pnpm 失败时自己插的占位提示行换成真布尔
+      } else {
+        const m = /^\s+([^:#]+)\s*:/.exec(line)
+        if (m) existing.add(norm(m[1].trim()))
+        keep.push(line)
+      }
+      i++
+    }
+    const add = pkgs.filter((n) => !existing.has(norm(key(n)))).map((n) => `  ${key(n)}: true`)
+    if (add.length === 0) return false
+    lines.splice(hi + 1, i - hi - 1, ...keep, ...add)
+  } else {
+    lines.push('', header, ...pkgs.map((n) => `  ${key(n)}: true`))
+  }
+  writeFileSync(path, lines.join('\n') + '\n')
+  return true
+}
+
 /**
  * 安装指定成员（缺省=全部缺失的）。流程：
  *   快照 → pnpm add（一次带齐）→ diff 丢了的 link: 依赖 → 按快照补回 + pnpm install（≤2 轮）
@@ -380,10 +441,22 @@ async function install(profileDir, names, opts = {}) {
   log(`快照已存 ${SNAPSHOT_NAME}`)
 
   const specs = pending.map((p) => `${p.name}@${p.range}`)
+  const addArgs = [...pnpm.baseArgs, 'add', ...specs]
   log(`$ pnpm add ${specs.join(' ')}`)
-  const r = await run(pnpm.file, [...pnpm.baseArgs, 'add', ...specs], profileDir, 300000)
+  let r = await run(pnpm.file, addArgs, profileDir, 300000)
   if (r.stdout) log(r.stdout.trim())
   if (r.stderr) log(r.stderr.trim())
+  if (r.code !== 0) {
+    // pnpm 拦了依赖的构建脚本（如 better-sqlite3）：按提示写 allowBuilds 再试一次
+    const ignored = parseIgnoredBuilds(`${r.stdout}\n${r.stderr}`)
+    if (ignored.length > 0) {
+      ensureAllowBuilds(profileDir, ignored)
+      log(`pnpm 拦截了构建脚本（${ignored.join(', ')}），已写入 pnpm-workspace.yaml 的 allowBuilds，重试…`)
+      r = await run(pnpm.file, addArgs, profileDir, 300000)
+      if (r.stdout) log(r.stdout.trim())
+      if (r.stderr) log(r.stderr.trim())
+    }
+  }
   if (r.code !== 0) {
     return fail(`pnpm add 失败（exit ${r.code}），profile 未改坏的依赖以快照为准：${snapshotPath}`, results.map((x) => x), snapshotPath)
   }
@@ -439,4 +512,6 @@ module.exports = {
   status,
   install,
   defaultRun,
+  parseIgnoredBuilds,
+  ensureAllowBuilds,
 }
