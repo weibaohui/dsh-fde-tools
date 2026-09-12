@@ -8,7 +8,7 @@
 装进 profile 后，设置里出现「FDE 工具箱」，列出全家桶成员的安装状态：
 缺什么点「安装」（或「补装」一键带齐）；「检查更新」对照 npm latest，
 有新版逐个或一键「更新」。宿主侧用 pnpm 装包并把成员追加进
-`dsh.profile.bundles`，装完/更新完提示重启 dsh 生效。
+`dsh.profile.bundles`，装完/更新完提示重启 dsh 生效。必装成员（登录门禁）缺失时面板会醒目提示。
 
 ![panel](docs/panel.png)
 
@@ -16,6 +16,7 @@
 
 | 成员 | 说明 |
 | --- | --- |
+| 🔐 [user-management](https://www.npmjs.com/package/@weibaohui/user-management)（必装） | 登录门禁：未登录弹登录/注册页，用户/角色/审计、TOTP 两步验证 |
 | 📦 [dsh-git-server](https://www.npmjs.com/package/@weibaohui/dsh-git-server) | Git 服务器（内嵌 ts-gogs）：HTTP clone/push、网页端、issue/PR |
 | 📁 [dsh-webdav-server](https://www.npmjs.com/package/@weibaohui/dsh-webdav-server) | 共享目录变挂载盘：WebDAV，三平台可挂，令牌认证 |
 | 📚 [dsh-kb](https://www.npmjs.com/package/@weibaohui/dsh-kb) | 团队知识库：浏览 / 全文检索 / raw 入料自动蒸馏成文 |

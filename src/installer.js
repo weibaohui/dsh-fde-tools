@@ -21,8 +21,16 @@ const { execFile } = require('node:child_process')
 
 const SELF_NAME = '@weibaohui/dsh-fde-tools'
 
-/** 全家桶成员清单：加一行即扩包（range 用发版时的 npm latest 加 ^）。 */
+/** 全家桶成员清单：加一行即扩包（range 用发版时的 npm latest 加 ^）。required=必装（缺失时面板醒目提示）。 */
 const PACK = [
+  {
+    name: '@weibaohui/user-management',
+    range: '^0.9.0',
+    icon: '🔐',
+    label: '登录门禁',
+    desc: 'dsh web 登录门禁：未登录弹登录/注册页，首个注册者自动成为管理员；用户/角色/登录与访问审计、TOTP 两步验证',
+    required: true,
+  },
   {
     name: '@weibaohui/dsh-git-server',
     range: '^0.1.0',
@@ -343,6 +351,7 @@ function status(profileDir, bootState) {
     pack: [],
     installedCount: 0,
     missingCount: 0,
+    requiredMissing: 0,
     needsRestartCount: 0,
   }
   if (!profileDir) return base
@@ -375,11 +384,13 @@ function status(profileDir, bootState) {
       installed: installed,
       version: version,
       inBundles: inBundles,
+      required: p.required === true,
       needsRestart: installed && inBundles && (!boot.bundles.has(p.name) || (bootVersion !== undefined && bootVersion !== version)),
     }
   })
   base.installedCount = base.pack.filter((p) => p.installed).length
   base.missingCount = base.pack.length - base.installedCount
+  base.requiredMissing = base.pack.filter((p) => p.required && !p.installed).length
   base.needsRestartCount = base.pack.filter((p) => p.needsRestart).length
   return base
 }

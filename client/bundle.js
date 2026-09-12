@@ -165,6 +165,7 @@ window.__ModuleLoader__.load({
         h('div', { className: 'fde-top' },
           st && st.profile && h('span', { className: 'fde-hchip' }, st.profile.name || ''),
           st && h('span', { className: 'fde-hchip' }, `${st.installedCount}/${st.pack.length} 已装`),
+          st && st.requiredMissing > 0 && h('span', { className: 'fde-chip update' }, '必装未装'),
           upd && upd.outdatedCount > 0 && h('span', { className: 'fde-chip update' }, `${upd.outdatedCount} 个可更新`),
           h('span', { className: 'fde-spacer' }),
           h('button', { className: 'fde-btn', disabled: checking || busy, onClick: checkUpdates }, checking ? '检查中…' : '检查更新'),
