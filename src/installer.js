@@ -72,6 +72,55 @@ const PACK = [
     label: '自动复盘',
     desc: '对话收尾自动复盘，把经验蒸馏成可复用的技能存入技能库',
   },
+  {
+    name: '@weibaohui/dsh-file-share',
+    range: '^0.3.0',
+    icon: '🗂️',
+    label: '文件管理',
+    desc: '会话工作区文件管理：文件树 / 预览 / 上传下载 / 打包 zip / @ 给 agent',
+  },
+  {
+    name: '@weibaohui/dsh-smart-title',
+    range: '^0.1.1',
+    icon: '🏷️',
+    label: '会话智能标题',
+    desc: '用 LLM 自动改写会话标题，告别「第一行」式标题',
+  },
+  {
+    name: 'dsh-taskboard',
+    range: '^0.7.1',
+    icon: '📋',
+    label: '任务看板',
+    desc: 'Agent 优先的任务看板：任务账本 + taskboard_* 工具 + 每任务独立会话，可选 worktree 隔离',
+  },
+  {
+    name: 'dshmarket',
+    range: '^1.45.1',
+    icon: '🛒',
+    label: '插件市场',
+    desc: '可视化插件市场：逛一逛，点一下，装好',
+  },
+  {
+    name: 'dsh-context',
+    range: '^0.50.0',
+    icon: '🧠',
+    label: '上下文仪表盘',
+    desc: '上下文洞察与管理：仪表盘 + /context 命令，看清上下文由什么组成、怎么演化',
+  },
+  {
+    name: '@xmanrui/dsh-im',
+    range: '^4.20.1',
+    icon: '💬',
+    label: 'IM 接入',
+    desc: '把十一种 IM 渠道和公网 AI Office 接入本机 Harness',
+  },
+  {
+    name: 'dsh-better-sidebar',
+    range: '^0.19.1',
+    icon: '🧭',
+    label: '侧栏增强',
+    desc: 'VSCode 式右侧边栏（资源管理器/编辑器/终端/git/浏览器），按会话隔离，可注册扩展标签页',
+  },
 ]
 
 function packEntry(name) {

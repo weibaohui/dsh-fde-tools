@@ -1,6 +1,6 @@
 # @weibaohui/dsh-fde-tools
 
-dsh 插件 · **FDE 工具箱全家桶**：安装一个插件，带上一批插件。
+dsh 插件 · **FDE 工具箱全家桶**：安装一个插件，带上一批插件（当前 14 件）。
 
 它本身是个引导器（bootstrap）：装进 profile 后，在侧栏出现「🧰 FDE 工具箱」面板，
 列出全家桶成员的安装状态，缺什么点「安装」，宿主侧用 pnpm 补装并把成员追加进
@@ -17,6 +17,13 @@ dsh 插件 · **FDE 工具箱全家桶**：安装一个插件，带上一批插�
 | 🔁 [dsh-continue](https://www.npmjs.com/package/@weibaohui/dsh-continue) | 自动续跑：会话中断自动退避重试 / 换模型 / 压缩上下文 |
 | 🎨 [dsh-settings-ui](https://www.npmjs.com/package/@weibaohui/dsh-settings-ui) | 界面微调：设置窗口大小 / 透明度 / 背景 |
 | 🪞 [hermes-loop](https://www.npmjs.com/package/@weibaohui/hermes-loop) | 自动复盘：对话收尾蒸馏经验成可复用技能 |
+| 🗂️ [dsh-file-share](https://www.npmjs.com/package/@weibaohui/dsh-file-share) | 会话工作区文件管理：文件树 / 预览 / 上传下载 / 打包 zip / @ 给 agent |
+| 🏷️ [dsh-smart-title](https://www.npmjs.com/package/@weibaohui/dsh-smart-title) | 会话智能标题：用 LLM 自动改写，告别「第一行」式标题 |
+| 📋 [dsh-taskboard](https://www.npmjs.com/package/dsh-taskboard) | Agent 优先的任务看板：任务账本 + agent 工具 + 每任务独立会话 |
+| 🛒 [dshmarket](https://www.npmjs.com/package/dshmarket) | 可视化插件市场：逛一逛，点一下，装好 |
+| 🧠 [dsh-context](https://www.npmjs.com/package/dsh-context) | 上下文仪表盘 + `/context` 命令，看清上下文组成与演化 |
+| 💬 [@xmanrui/dsh-im](https://www.npmjs.com/package/@xmanrui/dsh-im) | 十一种 IM 渠道和公网 AI Office 接入本机 Harness |
+| 🧭 [dsh-better-sidebar](https://www.npmjs.com/package/dsh-better-sidebar) | VSCode 式右侧边栏（资源管理器/编辑器/终端/git/浏览器），按会话隔离 |
 
 成员清单在 `src/installer.js` 的 `PACK`，加一行即扩包（`range` 取 npm latest 加 `^`）。
 
@@ -37,7 +44,7 @@ dsh plugin --profile web add @weibaohui/dsh-fde-tools
 - **快照还原**：pnpm 在 profile 里跑 add 有清掉 `link:`/`file:` 依赖的前科，
   安装前把依赖和 bundles 快照到 `<profile>/.fde-tools-install-snapshot.json`，
   装完 diff，丢了就按快照补回再 `pnpm install`（≤2 轮），仍失败则报错并给出快照路径。
-- **构建脚本自动放行**：依赖带安装期构建脚本（如 dsh-git-server 的 better-sqlite3）时，
+- **构建脚本自动放行**：依赖带安装期构建脚本（如 dsh-git-server 的 better-sqlite3、dsh-better-sidebar 的 node-pty）时，
   pnpm 会拦下并退出非零；引导器识别 `ERR_PNPM_IGNORED_BUILDS`，把包以
   `包名@版本: true` 写进 `pnpm-workspace.yaml` 的 `allowBuilds` 后自动重试一次。
 - 已在 profile 依赖里的成员（无论 npm / link / github spec）一律跳过，不会覆盖现有安装方式。
