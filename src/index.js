@@ -15,12 +15,12 @@ module.exports = {
   inject: ['webServer'],
 
   apply(ctx) {
-    let bootBundles = new Set()
-    try { bootBundles = installer.captureBootBundles() } catch (error) {
-      console.error('[dsh-fde-tools] boot bundles snapshot:', error && error.message)
+    let bootState = { bundles: new Set(), versions: new Map() }
+    try { bootState = installer.captureBootState() } catch (error) {
+      console.error('[dsh-fde-tools] boot state snapshot:', error && error.message)
     }
 
-    let installing = false
+    let mutating = false // 安装/更新串行闸
     const sendJson = (res, code, payload) => {
       try {
         res.writeHead(code, { 'content-type': 'application/json; charset=utf-8' })
@@ -52,18 +52,25 @@ module.exports = {
         try {
           if (req.method === 'GET' && apiPath.endsWith('/dsh-fde-tools/api/status')) {
             installer.ensurePnpm().catch(() => {}) // 后台先把 pnpm 探好，status 不等它
-            sendJson(res, 200, installer.status(null, bootBundles))
+            sendJson(res, 200, installer.status(null, bootState))
             return
           }
-          if (req.method === 'POST' && apiPath.endsWith('/dsh-fde-tools/api/install')) {
-            if (installing) { sendJson(res, 409, { error: '已有一次安装在进行中' }); return }
+          if (req.method === 'GET' && apiPath.endsWith('/dsh-fde-tools/api/check-updates')) {
+            sendJson(res, 200, await installer.checkUpdates(null))
+            return
+          }
+          if (req.method === 'POST' && (apiPath.endsWith('/dsh-fde-tools/api/install') || apiPath.endsWith('/dsh-fde-tools/api/update'))) {
+            const isUpdate = apiPath.endsWith('/api/update')
+            if (mutating) { sendJson(res, 409, { error: '已有一次安装/更新在进行中' }); return }
             const body = await readJsonBody(req).catch(() => ({}))
             const names = Array.isArray(body && body.names) ? body.names.filter((n) => typeof n === 'string') : null
-            installing = true
+            mutating = true
             try {
-              const result = await installer.install(null, names)
+              const result = isUpdate
+                ? await installer.update(null, names)
+                : await installer.install(null, names)
               sendJson(res, result.ok ? 200 : 500, result)
-            } finally { installing = false }
+            } finally { mutating = false }
             return
           }
           sendJson(res, 404, { error: 'not found' })

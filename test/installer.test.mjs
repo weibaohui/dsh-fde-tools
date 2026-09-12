@@ -229,9 +229,11 @@ test('status：bootBundles 缺省时已装成员宁可贵一点也不漏「待�
   assert.equal(st.pack.find((p) => p.name === kb).needsRestart, true)
 })
 
-test('captureBootBundles：读不出 manifest 时给空集', (t) => {
+test('captureBootState：读不出 manifest 时给空集', (t) => {
   const dir = tmp(t)
-  assert.equal(installer.captureBootBundles(join(dir, 'nope')).size, 0)
+  const e = installer.captureBootState(join(dir, 'nope'))
+  assert.equal(e.bundles.size, 0)
+  assert.equal(e.versions.size, 0)
 })
 
 test('install：pnpm 拦构建脚本 → 自动写 allowBuilds 并重试成功', async (t) => {
@@ -278,4 +280,99 @@ test('parseIgnoredBuilds / ensureAllowBuilds：多包解析与既有段去重', 
   assert.equal(installer.ensureAllowBuilds(profileDir, ['b@2.0.0']), false)
   const ws = readFileSync(join(profileDir, 'pnpm-workspace.yaml'), 'utf8')
   assert.match(ws, /allowBuilds:\n  a@1\.0\.0: true\n  b@2\.0\.0: true\n$/)
+})
+
+test('cmpVer：semver 全序比较表', (t) => {
+  const c = installer.cmpVer
+  assert.equal(c('1.2.3', '1.2.3'), 0)
+  assert.equal(c('0.7.2', '0.7.10'), -1)
+  assert.equal(c('1.0.0', '0.99.9'), 1)
+  assert.equal(c('1.0.0-rc.1', '1.0.0'), -1)
+  assert.equal(c('1.0.0', '1.0.0-rc.1'), 1)
+  assert.equal(c('1.0.0-rc.1', '1.0.0-rc.2'), -1)
+  assert.equal(c('1.0.0-beta', '1.0.0-rc.1'), -1)
+  assert.equal(c('1.0.0-rc', '1.0.0-rc.1'), -1)
+  assert.equal(c('1.0.0-alpha.7', '1.0.0-alpha.10'), -1)
+  assert.equal(c('v1.2.3', '1.2.3'), 0)
+  assert.equal(c('垃圾', '1.0.0'), 0)
+})
+
+test('checkUpdates：fake fetch 下 outdated/跳过判定', async (t) => {
+  const dir = tmp(t)
+  const kb = '@weibaohui/dsh-kb'
+  const gs = '@weibaohui/dsh-git-server'
+  const profileDir = makeProfile(dir, {
+    deps: { [kb]: '^0.7.2', [gs]: 'link:/x/dsh-git-server', dshmarket: '^1.3.0' },
+    bundles: [],
+    children: { [kb]: '0.7.2', [gs]: '0.1.0', dshmarket: '1.3.0' },
+  })
+  const r = await installer.checkUpdates(profileDir, {
+    _fetch: async (url) => {
+      const seg = url.split('/').filter(Boolean)
+      const name = decodeURIComponent(seg[seg.length - 2])
+      const table = { [kb]: '0.9.0', [gs]: '9.9.9', dshmarket: '1.45.1', '@weibaohui/dsh-fde-tools': '0.2.0' }
+      return { ok: true, json: async () => ({ version: table[name] }) }
+    },
+  })
+  assert.equal(r.error, null)
+  const rowKb = r.pack.find((x) => x.name === kb)
+  const rowGs = r.pack.find((x) => x.name === gs)
+  const rowMarket = r.pack.find((x) => x.name === 'dshmarket')
+  const rowSelf = r.pack.find((x) => x.name === '@weibaohui/dsh-fde-tools')
+  assert.deepEqual({ outdated: rowKb.outdated, latest: rowKb.latest }, { outdated: true, latest: '0.9.0' })
+  assert.equal(rowGs.outdated, false, 'link: 安装不参与更新')
+  assert.equal(rowGs.source, 'local')
+  assert.deepEqual({ outdated: rowMarket.outdated, latest: rowMarket.latest }, { outdated: true, latest: '1.45.1' })
+  assert.equal(rowSelf.outdated, false, '本插件未装（自身在跑）不算更新')
+  assert.ok(r.outdatedCount >= 2)
+})
+
+test('checkUpdates：latest 是预发布且已装正式版 → 不算更新', async (t) => {
+  const dir = tmp(t)
+  const kb = '@weibaohui/dsh-kb'
+  const profileDir = makeProfile(dir, { deps: { [kb]: '^0.7.2' }, bundles: [], children: { [kb]: '0.7.2' } })
+  const r = await installer.checkUpdates(profileDir, { _fetch: async () => ({ ok: true, json: async () => ({ version: '0.8.0-rc.1' }) }) })
+  const row = r.pack.find((x) => x.name === kb)
+  assert.equal(row.outdated, false)
+  assert.match(row.reason, /预发布/)
+})
+
+test('update：把过期的成员更到 latest，link: 与已最新成员跳过', async (t) => {
+  const dir = tmp(t)
+  const kb = '@weibaohui/dsh-kb'
+  const gs = '@weibaohui/dsh-git-server'
+  const kit = '@weibaohui/dsh-plugin-kit'
+  const profileDir = makeProfile(dir, {
+    deps: { [kb]: '^0.7.2', [gs]: 'link:/x/dsh-git-server', [kit]: 'link:/x/kit' },
+    bundles: [],
+    children: { [kb]: '0.7.2', [gs]: '0.1.0' },
+  })
+  const base = fakeRun(profileDir) // add=写依赖+建包目录
+  const fake = { calls: base.calls, run: async (file, args, cwd) =>
+    base.run(file, args.map((a) => (a === `${kb}@latest` ? `${kb}@^8.8.8` : a)), cwd) } // 真 pnpm 会把 @latest 解析成 ^具体版本
+  const r = await installer.update(profileDir, null, { _run: fake.run, _pnpm: FAKE_PNPM, _fetch: async () => ({ ok: true, json: async () => ({ version: '8.8.8' }) }) })
+  assert.equal(r.ok, true, r.error || '')
+  const skippedGs = r.results.find((x) => x.name === gs)
+  assert.equal(skippedGs.skipped, true)
+  assert.match(skippedGs.message, /源码安装/)
+  const updKb = r.results.find((x) => x.name === kb)
+  assert.equal(updKb.ok, true)
+  assert.equal(updKb.from, '0.7.2')
+  const manifest = readManifest(profileDir)
+  assert.ok(manifest.dependencies[kb].startsWith('^8'), `应写到 ^8.8.8，实际 ${manifest.dependencies[kb]}`)
+  assert.equal(manifest.dependencies[kit], 'link:/x/kit', 'link: 依赖保留')
+  assert.ok(manifest.dsh.profile.bundles.includes(kb), '更新后 bundles 仍在')
+  const addCall = fake.calls.find((c) => c.args.includes('add'))
+  assert.ok(addCall.args.some((a) => a.startsWith(kb + '@')), '应对 kb 发起 add（@latest 解析后落具体版本）')
+})
+
+test('status：版本变了（更新后）→ 待重启', (t) => {
+  const dir = tmp(t)
+  const kb = '@weibaohui/dsh-kb'
+  const profileDir = makeProfile(dir, { deps: { [kb]: '^0.7.2' }, bundles: [kb], children: { [kb]: '0.9.0' } })
+  const boot = { bundles: new Set([kb]), versions: new Map([[kb, '0.7.2']]) }
+  assert.equal(installer.status(profileDir, boot).pack.find((p) => p.name === kb).needsRestart, true)
+  assert.equal(installer.status(profileDir, { bundles: new Set([kb]), versions: new Map([[kb, '0.9.0']]) }).pack.find((p) => p.name === kb).needsRestart, false)
+  // 兼容旧式 Set
+  assert.equal(installer.status(profileDir, new Set([kb])).pack.find((p) => p.name === kb).needsRestart, false)
 })

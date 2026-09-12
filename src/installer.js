@@ -215,14 +215,25 @@ function ensureBundles(profileDir, names) {
   return true
 }
 
-/** 宿主 apply 时拍一次：boot 时已在 bundles 里的成员（之后装上的不算，用于待重启判定）。 */
-function captureBootBundles(profileDir) {
+/** 宿主 apply 时拍一次：boot 时各成员的 bundles 在位情况与版本（之后装的/更的不算，用于待重启判定）。 */
+function captureBootState(profileDir) {
   const dir = profileDir || (findProfile() ? findProfile().dir : null)
-  if (!dir) return new Set()
+  const empty = { bundles: new Set(), versions: new Map() }
+  if (!dir) return empty
   try {
-    return new Set(manifestBundles(readManifest(dir)))
+    const manifest = readManifest(dir)
+    const bundles = new Set(manifestBundles(manifest))
+    const deps = manifest.dependencies || {}
+    const versions = new Map()
+    for (const name of [SELF_NAME, ...PACK.map((p) => p.name)]) {
+      if (deps[name] !== undefined) {
+        const v = installedVersion(dir, name)
+        if (v) versions.set(name, v)
+      }
+    }
+    return { bundles: bundles, versions: versions }
   } catch {
-    return new Set()
+    return empty
   }
 }
 
@@ -303,10 +314,10 @@ function restartCommand() {
 }
 
 /**
- * 全家桶状态。bootBundles 传 captureBootBundles 的结果；缺省视为空集
- * （所有已装成员都会标 needsRestart，宁可贵一点也不漏提示）。
+ * 全家桶状态。bootState 传 captureBootState 的结果（也兼容旧式 Set=bundles）；
+ * 缺省视为空集（所有已装成员都会标 needsRestart，宁可贵一点也不漏提示）。
  */
-function status(profileDir, bootBundles) {
+function status(profileDir, bootState) {
   if (!profileDir) {
     const found = findProfile()
     profileDir = found ? found.dir : null
@@ -331,13 +342,16 @@ function status(profileDir, bootBundles) {
   }
   const deps = manifest.dependencies || {}
   const bundles = new Set(manifestBundles(manifest))
-  const boot = bootBundles || new Set()
+  const boot = bootState instanceof Set
+    ? { bundles: bootState, versions: new Map() }
+    : (bootState || { bundles: new Set(), versions: new Map() })
   base.profile = { name: findProfile() ? findProfile().name : null, dir: profileDir }
   base.pack = PACK.map((p) => {
     const spec = deps[p.name]
     const installed = spec !== undefined
     const version = installed ? installedVersion(profileDir, p.name) : null
     const inBundles = bundles.has(p.name)
+    const bootVersion = boot.versions.get(p.name)
     return {
       name: p.name,
       icon: p.icon,
@@ -348,7 +362,7 @@ function status(profileDir, bootBundles) {
       installed: installed,
       version: version,
       inBundles: inBundles,
-      needsRestart: installed && inBundles && !boot.has(p.name),
+      needsRestart: installed && inBundles && (!boot.bundles.has(p.name) || (bootVersion !== undefined && bootVersion !== version)),
     }
   })
   base.installedCount = base.pack.filter((p) => p.installed).length
@@ -358,7 +372,135 @@ function status(profileDir, bootBundles) {
 }
 
 // ---------------------------------------------------------------------------
-// 安装
+// 更新检查：semver 比较 + registry latest
+// ---------------------------------------------------------------------------
+
+/** 极简 semver 解析：v?主.次.补[-预发布][+构建]；解析不了返回 null。 */
+function parseVer(v) {
+  if (typeof v !== 'string') return null
+  const m = /^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/.exec(v.trim())
+  if (!m) return null
+  return { core: [Number(m[1]), Number(m[2]), Number(m[3])], pre: m[4] ? m[4].split('.') : null }
+}
+
+/** semver 全序比较（预发布 < 正式；预发布段数字<字符串、缺段更小）；任一解析不了返回 0。 */
+function cmpVer(a, b) {
+  const pa = parseVer(a)
+  const pb = parseVer(b)
+  if (!pa || !pb) return 0
+  for (let i = 0; i < 3; i++) {
+    if (pa.core[i] !== pb.core[i]) return pa.core[i] < pb.core[i] ? -1 : 1
+  }
+  if (pa.pre === null && pb.pre === null) return 0
+  if (pa.pre === null) return 1
+  if (pb.pre === null) return -1
+  for (let i = 0; i < Math.max(pa.pre.length, pb.pre.length); i++) {
+    const x = pa.pre[i]
+    const y = pb.pre[i]
+    if (x === undefined) return -1
+    if (y === undefined) return 1
+    const xn = /^\d+$/.test(x)
+    const yn = /^\d+$/.test(y)
+    if (xn && yn) {
+      const d = Number(x) - Number(y)
+      if (d !== 0) return d < 0 ? -1 : 1
+    } else if (xn !== yn) {
+      return xn ? -1 : 1
+    } else if (x !== y) {
+      return x < y ? -1 : 1
+    }
+  }
+  return 0
+}
+
+function registryBase() {
+  return (process.env.NPM_CONFIG_REGISTRY || process.env.npm_config_registry || 'https://registry.npmjs.org').replace(/\/+$/, '')
+}
+
+/** 查 dist-tag latest；网络/解析失败返回 null（不当作有更新）。 */
+async function fetchLatest(name, fetchImpl) {
+  const f = fetchImpl || globalThis.fetch
+  if (typeof f !== 'function') return null
+  try {
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), 10000)
+    const res = await f(`${registryBase()}/${encodeURIComponent(name)}/latest`, { signal: ctrl.signal, headers: { accept: 'application/json' } })
+    clearTimeout(timer)
+    if (!res.ok) return null
+    const d = await res.json()
+    return d && typeof d.version === 'string' ? d.version : null
+  } catch {
+    return null
+  }
+}
+
+const LOCAL_SPEC_RE = /^(link:|file:|github:|git\+|git@)/
+
+/** 是否提供更新：装着 registry 依赖、latest 查得到、确实更新，且不把正式版拽去预发布。 */
+function outdatedReason(row) {
+  if (!row.installed) return '未安装'
+  if (row.source === 'local') return '源码安装，跳过更新'
+  if (!row.latest) return '查不到最新版'
+  if (cmpVer(row.version, row.latest) >= 0) return '已是最新'
+  const pl = parseVer(row.latest)
+  const pv = parseVer(row.version)
+  if (pl && pl.pre !== null && pv && pv.pre === null) return '最新版是预发布，跳过'
+  return null
+}
+
+/** SELF + PACK 逐个对 registry 查 latest；并行。opts._fetch 是测试缝。 */
+async function checkUpdates(profileDir, opts = {}) {
+  if (!profileDir) {
+    const found = findProfile()
+    profileDir = found ? found.dir : null
+  }
+  const base = { self: SELF_NAME, profile: null, registry: registryBase(), pack: [], outdatedCount: 0, error: null }
+  if (!profileDir) {
+    base.error = '找不到所属 profile（~/.dsh/profiles 下没有装着本插件的）'
+    return base
+  }
+  let manifest
+  try {
+    manifest = readManifest(profileDir)
+  } catch (error) {
+    base.error = `读不到 profile manifest：${error && error.message}`
+    return base
+  }
+  const deps = manifest.dependencies || {}
+  base.profile = { name: findProfile() ? findProfile().name : null, dir: profileDir }
+  const entries = [
+    { name: SELF_NAME, icon: '🧰', label: 'FDE 工具箱', desc: '本插件（全家桶引导器）' },
+    ...PACK,
+  ]
+  const rows = entries.map((p) => {
+    const spec = deps[p.name]
+    return {
+      name: p.name,
+      icon: p.icon,
+      label: p.label,
+      spec: spec || null,
+      installed: spec !== undefined,
+      source: spec === undefined ? null : (LOCAL_SPEC_RE.test(String(spec)) ? 'local' : 'registry'),
+      version: spec === undefined ? null : installedVersion(profileDir, p.name),
+      latest: null,
+      outdated: false,
+      reason: null,
+    }
+  })
+  await Promise.all(rows.filter((r) => r.source === 'registry').map(async (r) => {
+    r.latest = await fetchLatest(r.name, opts._fetch)
+  }))
+  for (const r of rows) {
+    r.reason = outdatedReason(r)
+    r.outdated = r.reason === null
+  }
+  base.pack = rows
+  base.outdatedCount = rows.filter((r) => r.outdated).length
+  return base
+}
+
+// ---------------------------------------------------------------------------
+// 安装 / 更新
 // ---------------------------------------------------------------------------
 
 const SNAPSHOT_NAME = '.fde-tools-install-snapshot.json'
@@ -424,11 +566,63 @@ function ensureAllowBuilds(profileDir, pkgs) {
   return true
 }
 
+/** 快照到 <profile>/.fde-tools-install-snapshot.json，返回快照路径。 */
+function snapshotProfile(profileDir, manifest, pnpmSource) {
+  const snapshotPath = join(profileDir, SNAPSHOT_NAME)
+  writeFileSync(snapshotPath, JSON.stringify({
+    at: new Date().toISOString(),
+    profile: profileDir,
+    pnpm: pnpmSource,
+    before: { dependencies: { ...(manifest.dependencies || {}) }, bundles: manifestBundles(manifest) },
+  }, null, 2) + '\n')
+  return snapshotPath
+}
+
+/** pnpm add（带 ERR_PNPM_IGNORED_BUILDS 自动写 allowBuilds 重试一次）。 */
+async function pnpmAdd(profileDir, pnpm, specs, log, run) {
+  const addArgs = [...pnpm.baseArgs, 'add', ...specs]
+  log(`$ pnpm add ${specs.join(' ')}`)
+  let r = await run(pnpm.file, addArgs, profileDir, 300000)
+  if (r.stdout) log(r.stdout.trim())
+  if (r.stderr) log(r.stderr.trim())
+  if (r.code !== 0) {
+    const ignored = parseIgnoredBuilds(`${r.stdout}\n${r.stderr}`)
+    if (ignored.length > 0) {
+      ensureAllowBuilds(profileDir, ignored)
+      log(`pnpm 拦截了构建脚本（${ignored.join(', ')}），已写入 pnpm-workspace.yaml 的 allowBuilds，重试…`)
+      r = await run(pnpm.file, addArgs, profileDir, 300000)
+      if (r.stdout) log(r.stdout.trim())
+      if (r.stderr) log(r.stderr.trim())
+    }
+  }
+  return r
+}
+
+/** link 还原：pnpm 清掉的历史病，丢了就按快照补回再 install（≤2 轮）。返回 {healed} 或 {error}。 */
+async function healLostLinks(profileDir, beforeDeps, pnpm, log, run, snapshotPath) {
+  let healed = false
+  for (let round = 0; round < 2; round++) {
+    const now = readManifest(profileDir)
+    const nowDeps = now.dependencies || {}
+    const lost = Object.entries(beforeDeps).filter(([n, s]) => /^(link|file):/.test(String(s)) && nowDeps[n] === undefined)
+    if (lost.length === 0) return { healed: healed }
+    log(`pnpm 清掉了 ${lost.length} 个 link: 依赖（${lost.map(([n]) => n).join(', ')}），按快照还原…`)
+    now.dependencies = { ...nowDeps, ...Object.fromEntries(lost) }
+    writeManifest(profileDir, now)
+    const r2 = await run(pnpm.file, [...pnpm.baseArgs, 'install'], profileDir, 300000)
+    if (r2.stdout) log(r2.stdout.trim())
+    if (r2.stderr) log(r2.stderr.trim())
+    if (r2.code !== 0) return { error: `还原 link: 依赖的 pnpm install 失败（exit ${r2.code}），请按快照核对：${snapshotPath}` }
+    healed = true
+  }
+  return { healed: healed }
+}
+
 /**
  * 安装指定成员（缺省=全部缺失的）。流程：
  *   快照 → pnpm add（一次带齐）→ diff 丢了的 link: 依赖 → 按快照补回 + pnpm install（≤2 轮）
  *   → 追加 bundles → 逐成员回报。
- * opts._run / opts._pnpm 是测试缝；opts.onLog 收过程日志行。
+ * opts._run / opts._pnpm / opts._fetch 是测试缝；opts.onLog 收过程日志行。
  */
 async function install(profileDir, names, opts = {}) {
   const run = opts._run || defaultRun
@@ -480,52 +674,16 @@ async function install(profileDir, names, opts = {}) {
     return { ok: true, error: null, results: results, healed: false, snapshotPath: null, log: logChunks.join('').slice(-8000) }
   }
 
-  const snapshotPath = join(profileDir, SNAPSHOT_NAME)
-  writeFileSync(snapshotPath, JSON.stringify({
-    at: new Date().toISOString(),
-    profile: profileDir,
-    pnpm: pnpm.source,
-    before: { dependencies: beforeDeps, bundles: manifestBundles(manifest) },
-  }, null, 2) + '\n')
+  const snapshotPath = snapshotProfile(profileDir, manifest, pnpm.source)
   log(`快照已存 ${SNAPSHOT_NAME}`)
 
-  const specs = pending.map((p) => `${p.name}@${p.range}`)
-  const addArgs = [...pnpm.baseArgs, 'add', ...specs]
-  log(`$ pnpm add ${specs.join(' ')}`)
-  let r = await run(pnpm.file, addArgs, profileDir, 300000)
-  if (r.stdout) log(r.stdout.trim())
-  if (r.stderr) log(r.stderr.trim())
-  if (r.code !== 0) {
-    // pnpm 拦了依赖的构建脚本（如 better-sqlite3）：按提示写 allowBuilds 再试一次
-    const ignored = parseIgnoredBuilds(`${r.stdout}\n${r.stderr}`)
-    if (ignored.length > 0) {
-      ensureAllowBuilds(profileDir, ignored)
-      log(`pnpm 拦截了构建脚本（${ignored.join(', ')}），已写入 pnpm-workspace.yaml 的 allowBuilds，重试…`)
-      r = await run(pnpm.file, addArgs, profileDir, 300000)
-      if (r.stdout) log(r.stdout.trim())
-      if (r.stderr) log(r.stderr.trim())
-    }
-  }
+  const r = await pnpmAdd(profileDir, pnpm, pending.map((p) => `${p.name}@${p.range}`), log, run)
   if (r.code !== 0) {
     return fail(`pnpm add 失败（exit ${r.code}），profile 未改坏的依赖以快照为准：${snapshotPath}`, results.map((x) => x), snapshotPath)
   }
 
-  // link 还原：pnpm 清掉的历史病，丢了就按快照补回再 install（≤2 轮）。
-  let healed = false
-  for (let round = 0; round < 2; round++) {
-    const now = readManifest(profileDir)
-    const nowDeps = now.dependencies || {}
-    const lost = Object.entries(beforeDeps).filter(([n, s]) => /^(link|file):/.test(String(s)) && nowDeps[n] === undefined)
-    if (lost.length === 0) break
-    log(`pnpm 清掉了 ${lost.length} 个 link: 依赖（${lost.map(([n]) => n).join(', ')}），按快照还原…`)
-    now.dependencies = { ...nowDeps, ...Object.fromEntries(lost) }
-    writeManifest(profileDir, now)
-    const r2 = await run(pnpm.file, [...pnpm.baseArgs, 'install'], profileDir, 300000)
-    if (r2.stdout) log(r2.stdout.trim())
-    if (r2.stderr) log(r2.stderr.trim())
-    if (r2.code !== 0) return fail(`还原 link: 依赖的 pnpm install 失败（exit ${r2.code}），请按快照核对：${snapshotPath}`, results, snapshotPath)
-    healed = true
-  }
+  const healedResult = await healLostLinks(profileDir, beforeDeps, pnpm, log, run, snapshotPath)
+  if (healedResult.error) return fail(healedResult.error, results, snapshotPath)
 
   ensureBundles(profileDir, pending.map((p) => p.name))
 
@@ -539,7 +697,93 @@ async function install(profileDir, names, opts = {}) {
       message: landed ? `已装 ${installedVersion(profileDir, p.name) || p.range}，重启 dsh 后生效` : 'pnpm add 后依赖未落盘，请看日志',
     })
   }
-  return { ok: results.every((x) => x.ok), error: null, results: results, healed: healed, snapshotPath: snapshotPath, log: logChunks.join('').slice(-8000) }
+  return { ok: results.every((x) => x.ok), error: null, results: results, healed: healedResult.healed, snapshotPath: snapshotPath, log: logChunks.join('').slice(-8000) }
+}
+
+/**
+ * 更新指定成员到 npm latest（缺省=检查出有更新的全部）。只动装着 registry 依赖的成员；
+ * link:/file:/github: 源码安装与未安装的一律跳过。流程与 install 相同（快照→add→还原→bundles）。
+ */
+async function update(profileDir, names, opts = {}) {
+  const run = opts._run || defaultRun
+  const logChunks = []
+  const log = (text) => {
+    logChunks.push(text.endsWith('\n') ? text : text + '\n')
+    if (opts.onLog) opts.onLog(text)
+  }
+  const fail = (error, results, snap = null) => ({
+    ok: false,
+    error: error,
+    results: results || [],
+    healed: false,
+    snapshotPath: snap,
+    log: logChunks.join('').slice(-8000),
+  })
+
+  if (!profileDir) {
+    const found = findProfile()
+    if (!found) return fail('找不到所属 profile（~/.dsh/profiles 下没有装着本插件的）')
+    profileDir = found.dir
+  }
+  let manifest
+  try {
+    manifest = readManifest(profileDir)
+  } catch (error) {
+    return fail(`读不到 profile manifest：${error && error.message}`)
+  }
+  const beforeDeps = { ...(manifest.dependencies || {}) }
+
+  const wanted = names && names.length ? names : null
+  const known = new Set([SELF_NAME, ...PACK.map((p) => p.name)])
+  const unknown = (names || []).filter((n) => !known.has(n))
+  if (unknown.length) return fail(`不在全家桶清单里：${unknown.join(', ')}`)
+
+  // 挑出确实有更新的：装着 registry 依赖 && latest 查得到 && 版本确实落后
+  const check = await checkUpdates(profileDir, { _fetch: opts._fetch })
+  if (check.error) return fail(check.error)
+  const byName = new Map(check.pack.map((r) => [r.name, r]))
+  const pending = []
+  const results = []
+  for (const row of check.pack) {
+    if (wanted && !wanted.includes(row.name)) continue
+    if (row.outdated) pending.push(row)
+    else results.push({ name: row.name, ok: true, skipped: true, from: row.version, to: row.version, message: row.reason || '已是最新' })
+  }
+
+  if (pending.length === 0) {
+    return { ok: true, error: null, results: results, healed: false, snapshotPath: null, log: logChunks.join('').slice(-8000) }
+  }
+
+  const pnpm = opts._pnpm || await ensurePnpm(run)
+  if (!pnpm || pnpm.ready === false) return fail(pnpm && pnpm.error ? pnpm.error : 'pnpm 不可用', results)
+
+  const snapshotPath = snapshotProfile(profileDir, manifest, pnpm.source)
+  log(`快照已存 ${SNAPSHOT_NAME}`)
+
+  const r = await pnpmAdd(profileDir, pnpm, pending.map((row) => `${row.name}@latest`), log, run)
+  if (r.code !== 0) {
+    return fail(`pnpm add 失败（exit ${r.code}），profile 未改坏的依赖以快照为准：${snapshotPath}`, results.map((x) => x), snapshotPath)
+  }
+
+  const healedResult = await healLostLinks(profileDir, beforeDeps, pnpm, log, run, snapshotPath)
+  if (healedResult.error) return fail(healedResult.error, results, snapshotPath)
+
+  ensureBundles(profileDir, pending.map((row) => row.name))
+
+  const after = readManifest(profileDir)
+  for (const row of pending) {
+    const landed = (after.dependencies || {})[row.name] !== undefined
+    const to = installedVersion(profileDir, row.name)
+    results.push({
+      name: row.name,
+      ok: landed,
+      skipped: false,
+      from: row.version,
+      to: to,
+      message: landed ? `已更新 ${row.version} → ${to || row.latest}，重启 dsh 后生效` : 'pnpm add 后依赖未落盘，请看日志',
+    })
+  }
+  return { ok: results.every((x) => x.ok), error: null, results: results, healed: healedResult.healed, snapshotPath: snapshotPath, log: logChunks.join('').slice(-8000) }
 }
 
 module.exports = {
@@ -552,7 +796,7 @@ module.exports = {
   writeManifest,
   manifestBundles,
   ensureBundles,
-  captureBootBundles,
+  captureBootState,
   childPkgDir,
   installedVersion,
   ensurePnpm,
@@ -560,6 +804,11 @@ module.exports = {
   restartCommand,
   status,
   install,
+  update,
+  checkUpdates,
+  fetchLatest,
+  parseVer,
+  cmpVer,
   defaultRun,
   parseIgnoredBuilds,
   ensureAllowBuilds,

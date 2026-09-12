@@ -75,6 +75,7 @@ styles.insert(`
 .fde-row-desc{font-size:12px;color:var(--dsw-alias-label-secondary);margin-top:4px;line-height:1.7}
 .fde-row-side{flex:none;display:flex;align-items:center;gap:8px;padding-top:1px}
 .fde-chip{font-size:11px;line-height:1.6;border-radius:999px;padding:1px 10px;border:1px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-secondary);white-space:nowrap}
+.fde-chip.update{color:#b7791f;border-color:color-mix(in srgb,#b7791f 45%,var(--dsw-alias-border-l2))}
 .fde-chip.restart{color:var(--dsw-alias-brand-primary);border-color:color-mix(in srgb,var(--dsw-alias-brand-primary) 40%,var(--dsw-alias-border-l2))}
 .fde-foot{font-size:11px;color:var(--dsw-alias-label-tertiary,var(--dsw-alias-label-secondary));font-family:var(--ds-font-family-code,ui-monospace,monospace);margin-top:18px;word-break:break-all}
 .fde-spin{padding:28px 0;color:var(--dsw-alias-label-tertiary,var(--dsw-alias-label-secondary));font-size:12px}
@@ -88,7 +89,9 @@ styles.insert(`
 function FdeSettingsSection() {
   const h = React.createElement
   const [st, setSt] = React.useState(null)
-  const [busy, setBusy] = React.useState(false) // 有安装在进行
+  const [upd, setUpd] = React.useState(null) // 检查更新结果（null=还没查过）
+  const [busy, setBusy] = React.useState(false) // 有安装/更新在进行
+  const [checking, setChecking] = React.useState(false)
   const [busyName, setBusyName] = React.useState(null)
   const [toast, setToast] = React.useState(null)
   const toastTimer = React.useRef(null)
@@ -105,21 +108,33 @@ function FdeSettingsSection() {
     return d
   }, [])
 
+  const checkUpdates = React.useCallback(async () => {
+    const d = await fetch(`${API}/check-updates`).then(readJson).catch(() => null)
+    if (d && !d.error) setUpd(d)
+    else showToast((d && d.error) || '检查更新失败')
+    return d
+  }, [])
+
   React.useEffect(() => { refresh() }, [refresh])
 
-  const doInstall = async (names, focusName) => {
+  const afterMutate = async () => {
+    await refresh()
+    if (upd) checkUpdates() // 查过更新就静默刷新最新版信息
+  }
+
+  const mutate = async (path, names, focusName) => {
     if (busy || !names.length) return
     setBusy(true)
     setBusyName(focusName || '*')
     try {
-      const r = await fetch(`${API}/install`, {
+      const r = await fetch(`${API}/${path}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ names }),
       }).then(readJson).catch(() => null)
-      if (!r) showToast('安装请求失败')
+      if (!r) showToast('请求失败')
       else if (r.error) showToast(r.error)
-      await refresh()
+      await afterMutate()
     } finally {
       setBusy(false)
       setBusyName(null)
@@ -132,16 +147,24 @@ function FdeSettingsSection() {
   }
 
   const missing = st ? st.pack.filter((p) => !p.installed) : []
+  const outdated = upd ? upd.pack.filter((p) => p.outdated && (!st || st.pack.some((s) => s.name === p.name && s.installed))) : []
+  const updByName = new Map(upd ? upd.pack.map((r) => [r.name, r]) : [])
   const pnpmReady = st ? !(st.pnpm && st.pnpm.ready === false) : true
 
   return h('div', null,
     h('div', { className: 'fde-top' },
       st && st.profile && h('span', { className: 'fde-hchip' }, st.profile.name || ''),
       st && h('span', { className: 'fde-hchip' }, `${st.installedCount}/${st.pack.length} 已装`),
+      upd && upd.outdatedCount > 0 && h('span', { className: 'fde-chip update' }, `${upd.outdatedCount} 个可更新`),
       h('span', { className: 'fde-spacer' }),
+      h('button', { className: 'fde-btn', disabled: checking || busy, onClick: checkUpdates }, checking ? '检查中…' : '检查更新'),
+      outdated.length > 0 && pnpmReady && h('button', {
+        className: 'fde-btn primary', disabled: busy,
+        onClick: () => mutate('update', outdated.map((p) => p.name)),
+      }, busy ? '安装中…' : `更新 ${outdated.length} 个`),
       st && missing.length > 0 && pnpmReady && h('button', {
         className: 'fde-btn primary', disabled: busy,
-        onClick: () => doInstall(missing.map((p) => p.name)),
+        onClick: () => mutate('install', missing.map((p) => p.name)),
       }, busy ? '安装中…' : `补装 ${missing.length} 个`),
     ),
     st && st.error && h('div', { className: 'fde-banner err' }, st.error),
@@ -152,25 +175,33 @@ function FdeSettingsSection() {
       st.restart && st.restart.command && h('button', { className: 'fde-copy', onClick: () => doCopy(st.restart.command) }, '复制'),
     ),
     !st && h('div', { className: 'fde-spin' }, '读取中…'),
-    st && st.pack.map((p) => h('div', { className: 'fde-row', key: p.name },
-      h('div', { className: 'fde-row-icon' }, p.icon),
-      h('div', { className: 'fde-row-main' },
-        h('div', { className: 'fde-row-top' },
-          h('span', { className: 'fde-row-label' }, p.label),
-          h('span', { className: 'fde-row-name' }, p.name),
+    st && st.pack.map((p) => {
+      const u = updByName.get(p.name)
+      return h('div', { className: 'fde-row', key: p.name },
+        h('div', { className: 'fde-row-icon' }, p.icon),
+        h('div', { className: 'fde-row-main' },
+          h('div', { className: 'fde-row-top' },
+            h('span', { className: 'fde-row-label' }, p.label),
+            h('span', { className: 'fde-row-name' }, p.name),
+          ),
+          h('div', { className: 'fde-row-desc' }, p.desc),
         ),
-        h('div', { className: 'fde-row-desc' }, p.desc),
-      ),
-      h('div', { className: 'fde-row-side' },
-        p.installed && p.needsRestart && h('span', { className: 'fde-chip restart' }, '待重启'),
-        p.installed && !p.needsRestart && h('span', { className: 'fde-chip' }, `已装 ${p.version || ''}`.trim()),
-        !p.installed && pnpmReady && h('button', {
-          className: 'fde-btn primary', disabled: busy,
-          onClick: () => doInstall([p.name], p.name),
-        }, busy && busyName === p.name ? '安装中…' : '安装'),
-        !p.installed && !pnpmReady && h('span', { className: 'fde-chip' }, '未安装'),
-      ),
-    )),
+        h('div', { className: 'fde-row-side' },
+          p.installed && p.needsRestart && h('span', { className: 'fde-chip restart' }, '待重启'),
+          p.installed && !p.needsRestart && u && u.outdated && h('span', { className: 'fde-chip update' }, `已装 ${p.version || ''} → ${u.latest}`.trim()),
+          p.installed && !p.needsRestart && !(u && u.outdated) && h('span', { className: 'fde-chip' }, `已装 ${p.version || ''}`.trim()),
+          p.installed && u && u.outdated && pnpmReady && h('button', {
+            className: 'fde-btn primary', disabled: busy,
+            onClick: () => mutate('update', [p.name], p.name),
+          }, busy && busyName === p.name ? '更新中…' : '更新'),
+          !p.installed && pnpmReady && h('button', {
+            className: 'fde-btn primary', disabled: busy,
+            onClick: () => mutate('install', [p.name], p.name),
+          }, busy && busyName === p.name ? '安装中…' : '安装'),
+          !p.installed && !pnpmReady && h('span', { className: 'fde-chip' }, '未安装'),
+        ),
+      )
+    }),
     st && st.profile && h('div', { className: 'fde-foot' }, st.profile.dir),
     toast && h('div', { className: 'fde-toast' }, toast),
   )
