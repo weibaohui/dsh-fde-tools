@@ -1,10 +1,15 @@
 # @weibaohui/dsh-fde-tools
 
-dsh 插件 · **FDE 工具箱全家桶**：安装一个插件，带上一批插件（当前 14 件）。
+[![DSH plugin](https://img.shields.io/badge/dsh-plugin-green)](https://github.com/topics/dsh-plugin)
+[![npm version](https://img.shields.io/npm/v/@weibaohui/dsh-fde-tools)](https://www.npmjs.com/package/@weibaohui/dsh-fde-tools)
 
-它本身是个引导器（bootstrap）：装进 profile 后，在侧栏出现「🧰 FDE 工具箱」面板，
-列出全家桶成员的安装状态，缺什么点「安装」，宿主侧用 pnpm 补装并把成员追加进
+**FDE 工具箱全家桶**：安装一个插件，带上一批插件（当前 14 件）。
+
+装进 profile 后侧栏出现「🧰 FDE 工具箱」面板，列出全家桶成员的安装状态，
+缺什么点「安装」（或「补装」一键带齐），宿主侧用 pnpm 装包并把成员追加进
 `dsh.profile.bundles`，装完提示重启 dsh 生效。
+
+![panel](docs/panel.png)
 
 ## 全家桶成员
 
@@ -25,7 +30,7 @@ dsh 插件 · **FDE 工具箱全家桶**：安装一个插件，带上一批插�
 | 💬 [@xmanrui/dsh-im](https://www.npmjs.com/package/@xmanrui/dsh-im) | 十一种 IM 渠道和公网 AI Office 接入本机 Harness |
 | 🧭 [dsh-better-sidebar](https://www.npmjs.com/package/dsh-better-sidebar) | VSCode 式右侧边栏（资源管理器/编辑器/终端/git/浏览器），按会话隔离 |
 
-成员清单在 `src/installer.js` 的 `PACK`，加一行即扩包（`range` 取 npm latest 加 `^`）。
+成员清单在 `src/installer.js` 的 `PACK`，加一行即扩包（`range` 取 npm latest 加 `^`），面板与接口自动跟上。
 
 ## 安装
 
@@ -33,8 +38,11 @@ dsh 插件 · **FDE 工具箱全家桶**：安装一个插件，带上一批插�
 dsh plugin --profile web add @weibaohui/dsh-fde-tools
 ```
 
-然后重启 dsh，侧栏出现「🧰 FDE 工具箱」，进去补装缺失成员，再重启一次即可。
-面板顶部会给可直接复制的重启命令（launchd 守护的机器自动生成 `launchctl kickstart -k …`）。
+1. 重启 dsh，侧栏出现「🧰 FDE 工具箱」
+2. 面板里「补装 N 个」（或逐个点「安装」）
+3. 再重启一次，全家桶生效
+
+面板顶部给可直接复制的重启命令（launchd 守护的机器自动生成 `launchctl kickstart -k …`）。
 
 ## 工作原理
 
@@ -44,9 +52,10 @@ dsh plugin --profile web add @weibaohui/dsh-fde-tools
 - **快照还原**：pnpm 在 profile 里跑 add 有清掉 `link:`/`file:` 依赖的前科，
   安装前把依赖和 bundles 快照到 `<profile>/.fde-tools-install-snapshot.json`，
   装完 diff，丢了就按快照补回再 `pnpm install`（≤2 轮），仍失败则报错并给出快照路径。
-- **构建脚本自动放行**：依赖带安装期构建脚本（如 dsh-git-server 的 better-sqlite3、dsh-better-sidebar 的 node-pty）时，
-  pnpm 会拦下并退出非零；引导器识别 `ERR_PNPM_IGNORED_BUILDS`，把包以
-  `包名@版本: true` 写进 `pnpm-workspace.yaml` 的 `allowBuilds` 后自动重试一次。
+- **构建脚本自动放行**：依赖带安装期构建脚本（如 dsh-git-server 的 better-sqlite3、
+  dsh-better-sidebar 的 node-pty）时，pnpm 会拦下并退出非零；引导器识别
+  `ERR_PNPM_IGNORED_BUILDS`，把包以 `包名@版本: true` 写进 `pnpm-workspace.yaml`
+  的 `allowBuilds` 后自动重试一次。
 - 已在 profile 依赖里的成员（无论 npm / link / github spec）一律跳过，不会覆盖现有安装方式。
 
 ### 环境变量
