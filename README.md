@@ -5,7 +5,7 @@
 
 **FDE 工具箱全家桶**：安装一个插件，带上一批插件（当前 14 件）。
 
-装进 profile 后侧栏出现「🧰 FDE 工具箱」面板，列出全家桶成员的安装状态，
+装进 profile 后，设置里出现「FDE 工具箱」，列出全家桶成员的安装状态，
 缺什么点「安装」（或「补装」一键带齐），宿主侧用 pnpm 装包并把成员追加进
 `dsh.profile.bundles`，装完提示重启 dsh 生效。
 
@@ -38,11 +38,11 @@
 dsh plugin --profile web add @weibaohui/dsh-fde-tools
 ```
 
-1. 重启 dsh，侧栏出现「🧰 FDE 工具箱」
-2. 面板里「补装 N 个」（或逐个点「安装」）
+1. 重启 dsh，设置里出现「FDE 工具箱」
+2. 「补装 N 个」（或逐个点「安装」）
 3. 再重启一次，全家桶生效
 
-面板顶部给可直接复制的重启命令（launchd 守护的机器自动生成 `launchctl kickstart -k …`）。
+装完显示重启命令，可直接复制（launchd 守护的机器自动生成 `launchctl kickstart -k …`）。
 
 ## 工作原理
 
