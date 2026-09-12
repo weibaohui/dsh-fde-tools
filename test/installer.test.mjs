@@ -14,6 +14,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, symlinkSyn
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { realpathSync } from 'node:fs'
+import { userInfo } from 'node:os'
 import installer from '../src/installer.js'
 
 const REPO_ROOT = realpathSync(join(import.meta.dirname, '..'))
@@ -375,4 +376,19 @@ test('status：版本变了（更新后）→ 待重启', (t) => {
   assert.equal(installer.status(profileDir, { bundles: new Set([kb]), versions: new Map([[kb, '0.9.0']]) }).pack.find((p) => p.name === kb).needsRestart, false)
   // 兼容旧式 Set
   assert.equal(installer.status(profileDir, new Set([kb])).pack.find((p) => p.name === kb).needsRestart, false)
+})
+
+test('restartCommand：从 LaunchAgents 动态探测 dsh web 守护，写死的标签不适配', (t) => {
+  const dir = tmp(t)
+  // 别的服务的 plist → 忽略
+  writeFileSync(join(dir, 'com.other.thing.plist'), '<string>/usr/bin/other</string>')
+  assert.equal(installer.restartCommand(dir), null, '没有 dsh 守护应返回 null')
+  // dsh web 守护（任意 label）→ 按文件名生成 kickstart
+  writeFileSync(join(dir, 'com.mine.dsh-web.plist'), '<string>/opt/dsh/bin/dsh</string><string>web</string><string>--no-open</string>')
+  const cmd = installer.restartCommand(dir)
+  assert.equal(cmd, `launchctl kickstart -k gui/${userInfo().uid}/com.mine.dsh-web`)
+  // dsh 但不跑 web → 忽略
+  const dir2 = tmp(t)
+  writeFileSync(join(dir2, 'com.mine.dsh-tui.plist'), '<string>/opt/dsh/bin/dsh</string><string>--profile tui</string>')
+  assert.equal(installer.restartCommand(dir2), null)
 })

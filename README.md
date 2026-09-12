@@ -43,7 +43,7 @@ dsh plugin --profile web add @weibaohui/dsh-fde-tools
 2. 「补装 N 个」（或逐个点「安装」）
 3. 再重启一次，全家桶生效
 
-装完显示重启命令，可直接复制（launchd 守护的机器自动生成 `launchctl kickstart -k …`）。
+装完显示重启提示；机器上有 dsh web 的 launchd 守护时，自动按守护配置生成对应的 `launchctl kickstart` 命令供复制，其余环境只提示重启。
 
 ## 工作原理
 
