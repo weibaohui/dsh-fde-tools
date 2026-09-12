@@ -1,0 +1,58 @@
+{
+  "name": "@weibaohui/dsh-fde-tools",
+  "version": "0.1.0",
+  "description": "dsh 插件 · FDE 工具箱全家桶：安装一个插件带上一批插件（代码仓库 / 挂载盘 / 知识库 / 定时任务 / 自动续跑 / 界面微调 / 自动复盘），侧栏面板看安装状态、一键补装缺失插件。",
+  "license": "MIT",
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "cordis",
+    "plugin",
+    "dsh-plugin",
+    "web",
+    "bundle",
+    "installer",
+    "fde"
+  ],
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./client": "./client/bundle.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "client",
+    "scripts",
+    "docs",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "scripts": {
+    "check": "node --check src/index.js && node --check src/installer.js && node --check client/index.js && node --check client/bundle.js",
+    "test": "node --test test/*.test.mjs",
+    "build:client": "node scripts/build-client.mjs"
+  },
+  "engines": {
+    "node": ">=22.5"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/weibaohui/dsh-fde-tools.git"
+  },
+  "homepage": "https://github.com/weibaohui/dsh-fde-tools#readme",
+  "bugs": {
+    "url": "https://github.com/weibaohui/dsh-fde-tools/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
