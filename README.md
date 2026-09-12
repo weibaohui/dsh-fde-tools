@@ -66,21 +66,6 @@ dsh plugin --profile web add @weibaohui/dsh-fde-tools
 | `DSH_FDE_TOOLS_PNPM` | 手动指名 pnpm 可执行文件；缺省按 PATH → `~/.local/bin/pnpm` → 宿主同前缀的 pnpm.cjs 顺序探测 |
 | `DSH_HOME` | dsh 主目录（缺省 `~/.dsh`） |
 
-## 开发
-
-```sh
-npm run check          # 语法检查
-npm test               # node --test（fake pnpm，不碰真 profile）
-npm run build:client   # 改了 client/index.js 后必须重建 client/bundle.js
-```
-
-真机联调：`dsh plugin --profile web add link:<本仓路径>`，重启 dsh web。
-
-### 发版
-
-GitHub Release（tag 与 package.json version 一致）触发 `.github/workflows/publish.yml`，
-走 npm Trusted Publishing（OIDC），无需 token。
-
 ## License
 
 MIT
