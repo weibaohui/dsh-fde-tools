@@ -15,7 +15,7 @@
  */
 
 const { existsSync, readdirSync, readFileSync, writeFileSync, realpathSync } = require('node:fs')
-const { homedir, userInfo } = require('node:os')
+const { homedir } = require('node:os')
 const { dirname, join } = require('node:path')
 const { execFile } = require('node:child_process')
 
@@ -313,28 +313,6 @@ function ensurePnpm(run) {
 // ---------------------------------------------------------------------------
 
 /**
- * 通用重启命令探测：不写死任何人的配置。扫 ~/Library/LaunchAgents 全部 plist，
- * 找出内容里同时提到 dsh 与 web 的守护项，按其文件名（即 launchd label）生成
- * kickstart 命令；没有 launchd 守护（直接终端跑 dsh web 的）返回 null，UI 只给
- * 通用文案。
- */
-function restartCommand(launchAgentsDir = join(homedir(), 'Library', 'LaunchAgents')) {
-  let uid
-  try { uid = userInfo().uid } catch { return null }
-  let entries = []
-  try { entries = readdirSync(launchAgentsDir).filter((n) => n.endsWith('.plist')) } catch { return null }
-  for (const name of entries) {
-    let text
-    try { text = readFileSync(join(launchAgentsDir, name), 'utf8') } catch { continue }
-    if (!/\bdsh\b/.test(text)) continue
-    const mentionsWeb = /<string>[^<]*\bweb\b[^<]*<\/string>/.test(text) || /\bdsh\.web\b/.test(name)
-    if (!mentionsWeb) continue
-    return `launchctl kickstart -k gui/${uid}/${name.replace(/\.plist$/, '')}`
-  }
-  return null
-}
-
-/**
  * 全家桶状态。bootState 传 captureBootState 的结果（也兼容旧式 Set=bundles）；
  * 缺省视为空集（所有已装成员都会标 needsRestart，宁可贵一点也不漏提示）。
  */
@@ -347,7 +325,6 @@ function status(profileDir, bootState) {
     self: SELF_NAME,
     profile: null,
     pnpm: pnpmState(),
-    restart: { command: restartCommand(), generic: '重启 dsh 后生效' },
     pack: [],
     installedCount: 0,
     missingCount: 0,
@@ -825,7 +802,6 @@ module.exports = {
   installedVersion,
   ensurePnpm,
   pnpmState,
-  restartCommand,
   status,
   install,
   update,

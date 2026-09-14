@@ -15,7 +15,7 @@ window.__ModuleLoader__.load({
      *
      * 设置页区块（settings.section 槽位，dsh-kb 同款）：全家桶成员清单——
      *  - 已装显示版本 chip，缺失给「安装」按钮，右上「补装」一键带齐；
-     *  - pnpm add 宿主侧执行，装完提示重启生效并给可复制的重启命令；
+     *  - pnpm add 宿主侧执行，装完提示重启生效；
      *  - boot 时不在 bundles 的已装成员标「待重启」。
      *
      * 数据通道：宿主同源路由 /dsh-fde-tools/api。
@@ -27,24 +27,6 @@ window.__ModuleLoader__.load({
     async function readJson(res) {
       const text = await res.text()
       try { return JSON.parse(text) } catch { return null }
-    }
-
-    function copyText(text) {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        return navigator.clipboard.writeText(text).then(() => true, () => false)
-      }
-      return Promise.resolve(false)
-    }
-    function copyFallback(text) {
-      const ta = document.createElement('textarea')
-      ta.value = text
-      ta.style.cssText = 'position:fixed;left:-9999px;top:0'
-      document.body.appendChild(ta)
-      ta.select()
-      let ok = false
-      try { ok = document.execCommand('copy') } catch { ok = false }
-      ta.remove()
-      return ok
     }
 
     const styles = {
@@ -72,9 +54,6 @@ window.__ModuleLoader__.load({
     .fde-btn.primary:hover:not(:disabled){border-color:color-mix(in srgb,var(--dsw-alias-brand-primary) 55%,var(--dsw-alias-border-l2))}
     .fde-banner{display:flex;gap:10px;align-items:center;flex-wrap:wrap;border:1px solid color-mix(in srgb,var(--dsw-alias-brand-primary) 35%,var(--dsw-alias-border-l2));background:color-mix(in srgb,var(--dsw-alias-brand-primary) 8%,transparent);border-radius:10px;padding:10px 14px;margin:0 0 14px;font-size:12.5px}
     .fde-banner.err{border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary,#d9534f) 45%,var(--dsw-alias-border-l2));background:color-mix(in srgb,var(--dsw-alias-state-error-primary,#d9534f) 8%,transparent)}
-    .fde-code{font-family:var(--ds-font-family-code,ui-monospace,monospace);font-size:11.5px;background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l2);border-radius:6px;padding:2px 8px;word-break:break-all}
-    .fde-copy{border:0;background:transparent;color:var(--dsw-alias-brand-primary);font-size:12px;cursor:pointer;padding:0 2px;flex:none}
-    .fde-copy:hover{opacity:.8}
     .fde-row{display:flex;gap:12px;align-items:flex-start;padding:14px 0;border-bottom:1px solid var(--dsw-alias-border-l2)}
     .fde-row:last-child{border-bottom:0}
     .fde-row-icon{font-size:18px;line-height:1.4;flex:none;width:24px;text-align:center}
@@ -151,11 +130,6 @@ window.__ModuleLoader__.load({
         }
       }
 
-      const doCopy = async (text) => {
-        const ok = (await copyText(text)) || copyFallback(text)
-        showToast(ok ? '已复制' : '复制失败，请手动选择文本')
-      }
-
       const missing = st ? st.pack.filter((p) => !p.installed) : []
       const outdated = upd ? upd.pack.filter((p) => p.outdated && (!st || st.pack.some((s) => s.name === p.name && s.installed))) : []
       const updByName = new Map(upd ? upd.pack.map((r) => [r.name, r]) : [])
@@ -182,8 +156,6 @@ window.__ModuleLoader__.load({
         st && st.pnpm && st.pnpm.ready === false && h('div', { className: 'fde-banner err' }, st.pnpm.error),
         st && st.needsRestartCount > 0 && h('div', { className: 'fde-banner' },
           h('span', null, '重启 dsh 后生效'),
-          st.restart && st.restart.command && h('code', { className: 'fde-code' }, st.restart.command),
-          st.restart && st.restart.command && h('button', { className: 'fde-copy', onClick: () => doCopy(st.restart.command) }, '复制'),
         ),
         !st && h('div', { className: 'fde-spin' }, '读取中…'),
         st && st.pack.map((p) => {
