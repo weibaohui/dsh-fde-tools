@@ -9,6 +9,7 @@
  */
 
 const installer = require('./installer')
+const restart = require('./restart')
 
 module.exports = {
   name: 'dsh-fde-tools',
@@ -21,6 +22,7 @@ module.exports = {
     }
 
     let mutating = false // 安装/更新串行闸
+    let restarting = false // 重启已安排（自还会 SIGTERM，只防重复点击）
     const sendJson = (res, code, payload) => {
       try {
         res.writeHead(code, { 'content-type': 'application/json; charset=utf-8' })
@@ -52,7 +54,10 @@ module.exports = {
         try {
           if (req.method === 'GET' && apiPath.endsWith('/dsh-fde-tools/api/status')) {
             installer.ensurePnpm().catch(() => {}) // 后台先把 pnpm 探好，status 不等它
-            sendJson(res, 200, installer.status(null, bootState))
+            const payload = installer.status(null, bootState)
+            payload.boot = restart.BOOT_ID
+            payload.restart = restart.status()
+            sendJson(res, 200, payload)
             return
           }
           if (req.method === 'GET' && apiPath.endsWith('/dsh-fde-tools/api/check-updates')) {
@@ -71,6 +76,23 @@ module.exports = {
                 : await installer.install(null, names)
               sendJson(res, result.ok ? 200 : 500, result)
             } finally { mutating = false }
+            return
+          }
+          if (req.method === 'POST' && apiPath.endsWith('/dsh-fde-tools/api/restart')) {
+            const rst = restart.status()
+            if (!rst.allowed) { sendJson(res, 403, { error: `dsh 由 ${rst.supervisor} 守护，一键重启已停用（会跟守护进程打架），请用系统服务方式重启` }); return }
+            if (restart.detectedDebugger() !== null) { sendJson(res, 403, { error: 'dsh 正被调试器附着，已停用一键重启' }); return }
+            if (!restart.trustedRequest(req)) { sendJson(res, 403, { error: 'restart is limited to same-origin loopback requests' }); return }
+            if (mutating) { sendJson(res, 409, { error: '安装/更新进行中，请等它结束后再重启' }); return }
+            if (restarting) { sendJson(res, 409, { error: '重启已安排' }); return }
+            restarting = true
+            try {
+              const result = restart.schedule(restart.servingPort(req))
+              sendJson(res, 202, { ok: true, boot: restart.BOOT_ID, pid: result.pid, helperPid: result.helperPid, logErr: result.logErr })
+            } catch (error) {
+              restarting = false
+              sendJson(res, 500, { error: String((error && error.message) || error) })
+            }
             return
           }
           sendJson(res, 404, { error: 'not found' })

@@ -24,6 +24,9 @@ window.__ModuleLoader__.load({
 
     const API = '/dsh-fde-tools/api'
 
+    /** 一键重启只在本机直连时可用（服务端同样只认 loopback 直连）；网关/局域网打开则隐藏按钮。 */
+    const loopbackHost = () => typeof location === 'object' && (location.hostname === 'localhost' || location.hostname === '::1' || /^127\./.test(location.hostname))
+
     async function readJson(res) {
       const text = await res.text()
       try { return JSON.parse(text) } catch { return null }
@@ -54,6 +57,7 @@ window.__ModuleLoader__.load({
     .fde-btn.primary:hover:not(:disabled){border-color:color-mix(in srgb,var(--dsw-alias-brand-primary) 55%,var(--dsw-alias-border-l2))}
     .fde-banner{display:flex;gap:10px;align-items:center;flex-wrap:wrap;border:1px solid color-mix(in srgb,var(--dsw-alias-brand-primary) 35%,var(--dsw-alias-border-l2));background:color-mix(in srgb,var(--dsw-alias-brand-primary) 8%,transparent);border-radius:10px;padding:10px 14px;margin:0 0 14px;font-size:12.5px}
     .fde-banner.err{border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary,#d9534f) 45%,var(--dsw-alias-border-l2));background:color-mix(in srgb,var(--dsw-alias-state-error-primary,#d9534f) 8%,transparent)}
+    .fde-hint{font-size:11.5px;color:var(--dsw-alias-label-secondary)}
     .fde-row{display:flex;gap:12px;align-items:flex-start;padding:14px 0;border-bottom:1px solid var(--dsw-alias-border-l2)}
     .fde-row:last-child{border-bottom:0}
     .fde-row-icon{font-size:18px;line-height:1.4;flex:none;width:24px;text-align:center}
@@ -82,6 +86,7 @@ window.__ModuleLoader__.load({
       const [busy, setBusy] = React.useState(false) // 有安装/更新在进行
       const [checking, setChecking] = React.useState(false)
       const [busyName, setBusyName] = React.useState(null)
+      const [restarting, setRestarting] = React.useState(false)
       const [toast, setToast] = React.useState(null)
       const toastTimer = React.useRef(null)
 
@@ -130,6 +135,38 @@ window.__ModuleLoader__.load({
         }
       }
 
+      // 一键重启（机制同 dsh-market）：POST 成功/进程已死都进入轮询，boot 变了整页刷新。
+      const doRestart = async () => {
+        if (restarting || !st || typeof st.boot !== 'string') return
+        setRestarting(true)
+        const previousBoot = st.boot
+        const awaitNewBoot = () => {
+          const deadline = Date.now() + 60000
+          const poll = () => {
+            fetch(`${API}/status`).then((r) => r.json()).then((next) => {
+              if (typeof next.boot === 'string' && next.boot !== previousBoot) { location.reload(); return }
+              retry()
+            }).catch(retry) // 网络错误=老进程已死，属重启进行中
+          }
+          const retry = () => {
+            if (Date.now() > deadline) { setRestarting(false); showToast('等待 dsh 启动超时'); return }
+            setTimeout(poll, 1500)
+          }
+          poll()
+        }
+        const requestRestart = async (attemptsLeft) => {
+          try {
+            const res = await fetch(`${API}/restart`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })
+            const body = await res.json().catch(() => ({}))
+            if (res.status === 202 && body.ok === true) { awaitNewBoot(); return }
+            if (res.status === 409 && attemptsLeft > 0) { setTimeout(() => requestRestart(attemptsLeft - 1), 1500); return }
+            setRestarting(false)
+            showToast('重启失败：' + String(body.error || `HTTP ${res.status}`))
+          } catch { awaitNewBoot() } // 请求打出去进程就断：SIGTERM 竞速，视为重启已开始
+        }
+        requestRestart(10)
+      }
+
       const missing = st ? st.pack.filter((p) => !p.installed) : []
       const outdated = upd ? upd.pack.filter((p) => p.outdated && (!st || st.pack.some((s) => s.name === p.name && s.installed))) : []
       const updByName = new Map(upd ? upd.pack.map((r) => [r.name, r]) : [])
@@ -156,6 +193,12 @@ window.__ModuleLoader__.load({
         st && st.pnpm && st.pnpm.ready === false && h('div', { className: 'fde-banner err' }, st.pnpm.error),
         st && st.needsRestartCount > 0 && h('div', { className: 'fde-banner' },
           h('span', null, '重启 dsh 后生效'),
+          st.restart && st.restart.allowed && loopbackHost() && h('button', {
+            className: 'fde-btn primary', disabled: restarting || busy,
+            onClick: doRestart,
+          }, restarting ? '正在重启…' : '立即重启'),
+          st.restart && st.restart.allowed && !loopbackHost() && h('span', { className: 'fde-hint' }, '用 http://127.0.0.1 打开 dsh 才能一键重启'),
+          st.restart && !st.restart.allowed && h('span', { className: 'fde-hint' }, `dsh 由 ${st.restart.supervisor} 守护，请用系统服务方式重启`),
         ),
         !st && h('div', { className: 'fde-spin' }, '读取中…'),
         st && st.pack.map((p) => {
