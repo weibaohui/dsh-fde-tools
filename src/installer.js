@@ -129,6 +129,20 @@ const PACK = [
     label: '侧栏增强',
     desc: 'VSCode 式右侧边栏（资源管理器/编辑器/终端/git/浏览器），按会话隔离，可注册扩展标签页',
   },
+  {
+    name: 'dsh-qa',
+    range: '^0.5.2',
+    icon: '🧪',
+    label: 'QA 工作台',
+    desc: '本地软件测试工作台：需求 / 用例 / 缺陷 / 里程碑全流程，实时看板与日历排期，AI 自动登记 + 门禁审批（PolyForm 非商业许可）',
+  },
+  {
+    name: '@nanmicoder/dsh-agent-teams',
+    range: '^0.1.20',
+    icon: '🤝',
+    label: 'Agent 团队',
+    desc: '一句话组建多代理团队：队长拆解带依赖的任务，持久子代理协作执行，实时任务 DAG 面板',
+  },
 ]
 
 function packEntry(name) {

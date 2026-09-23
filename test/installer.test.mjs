@@ -83,14 +83,14 @@ const FAKE_PNPM = { file: 'fake-pnpm', baseArgs: [], source: 'fake' }
 
 // ---------------------------------------------------------------------------
 
-test('PACK 清单：15 个成员、名字唯一、range 形如 ^x.y.z、user-management 必装', (t) => {
-  assert.equal(installer.PACK.length, 15)
+test('PACK 清单：17 个成员、名字唯一、range 形如 ^x.y.z、user-management 必装', (t) => {
+  assert.equal(installer.PACK.length, 17)
   assert.equal(installer.PACK[0].name, '@weibaohui/user-management')
   assert.equal(installer.PACK[0].required, true)
   assert.equal(installer.PACK.filter((p) => p.required).length, 1)
-  assert.deepEqual(new Set(ALL_NAMES).size, 15)
+  assert.deepEqual(new Set(ALL_NAMES).size, 17)
   for (const p of installer.PACK) {
-    assert.ok(/^(dsh-|dshmarket|@weibaohui\/|@xmanrui\/)/.test(p.name), p.name)
+    assert.ok(/^(dsh-|dshmarket|@weibaohui\/|@xmanrui\/|@nanmicoder\/)/.test(p.name), p.name)
     assert.match(p.range, /^\^\d+\.\d+\.\d+$/, p.name)
     assert.ok(p.label && p.icon && p.desc, p.name)
   }
@@ -128,7 +128,7 @@ test('install：全缺 → 一次 pnpm add、逐个写依赖、bundles 全追加
   const addCalls = fake.calls.filter((c) => c.args.includes('add'))
   assert.equal(addCalls.length, 1, '应只有一次 pnpm add')
   const specs = addCalls[0].args.slice(addCalls[0].args.indexOf('add') + 1)
-  assert.equal(specs.length, 15, '十五个成员一次带齐')
+  assert.equal(specs.length, 17, '十七个成员一次带齐')
 
   const manifest = readManifest(profileDir)
   for (const p of installer.PACK) {
@@ -152,7 +152,7 @@ test('install：已装成员跳过，不重复进 add', async (t) => {
   const skipped = r.results.find((x) => x.name === kb.name)
   assert.equal(skipped.skipped, true)
   const addCall = fake.calls.find((c) => c.args.includes('add'))
-  assert.equal(addCall.args.slice(addCall.args.indexOf('add') + 1).length, 14, '只 add 缺的 14 个')
+  assert.equal(addCall.args.slice(addCall.args.indexOf('add') + 1).length, 16, '只 add 缺的 16 个')
 })
 
 test('install：pnpm 清掉 link: 依赖 → 快照还原成功，bundles 照常追加', async (t) => {
@@ -214,7 +214,7 @@ test('status：安装态 / bundles / 待重启判定', (t) => {
 
   const st = installer.status(profileDir, new Set([kb]))
   assert.equal(st.installedCount, 2)
-  assert.equal(st.missingCount, 13)
+  assert.equal(st.missingCount, 15)
   assert.equal(st.requiredMissing, 1, 'user-management 缺失应计入必装缺失')
   const rowKb = st.pack.find((p) => p.name === kb)
   const rowGs = st.pack.find((p) => p.name === gs)
