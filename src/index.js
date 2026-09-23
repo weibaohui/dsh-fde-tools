@@ -13,7 +13,7 @@ const restart = require('./restart')
 
 module.exports = {
   name: 'dsh-fde-tools',
-  inject: ['webServer'],
+  inject: ['webServer', 'connection'],
 
   apply(ctx) {
     let bootState = { bundles: new Set(), versions: new Map() }
@@ -49,6 +49,14 @@ module.exports = {
       kind: 'prefix',
       path: '/dsh-fde-tools/api',
       handler: async (req, res) => {
+    // 与其它 host 路由一致的信任栅栏：connection 服务的 Host/Origin 检查
+    // 加浏览器认证，防止本机任意网页跨站调用。
+    const rejection = ctx.connection.requestRejection(req)
+    if (rejection !== undefined) {
+      res.writeHead(rejection)
+      res.end()
+      return
+    }
         const url = new URL(req.url || '/', 'http://dsh.local')
         const apiPath = url.pathname.replace(/\/+$/, '')
         try {

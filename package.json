@@ -1,6 +1,6 @@
 {
   "name": "@weibaohui/dsh-fde-tools",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "dsh 插件 · FDE 工具箱全家桶：安装一个插件带上一批常用 dsh 插件（代码仓库 / 挂载盘 / 知识库 / 定时任务 / 自动续跑 / 界面微调 / 自动复盘 / 文件管理 / 智能标题 / 任务看板 / 插件市场 / 上下文 / IM 接入 / 侧栏增强 / QA 工作台 / Agent 团队），面板看状态、一键补装。",
   "license": "MIT",
   "keywords": [
