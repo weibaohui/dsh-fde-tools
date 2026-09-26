@@ -10,7 +10,7 @@
 有新版逐个或一键「更新」。宿主侧用 pnpm 装包并把成员追加进
 `dsh.profile.bundles`，装完/更新完提示重启 dsh 生效。必装成员（登录门禁）缺失时面板会醒目提示。
 
-![panel](https://raw.githubusercontent.com/weibaohui/dsh-fde-tools/main/docs/panel.png)
+![panel](https://cdn.jsdelivr.net/gh/weibaohui/dsh-fde-tools@main/docs/panel.png)
 
 ## 全家桶成员
 
