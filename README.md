@@ -3,7 +3,7 @@
 [![DSH plugin](https://img.shields.io/badge/dsh-plugin-green)](https://github.com/topics/dsh-plugin)
 [![npm version](https://img.shields.io/npm/v/@weibaohui/dsh-fde-tools)](https://www.npmjs.com/package/@weibaohui/dsh-fde-tools)
 
-**FDE 工具箱全家桶**：安装一个插件，带上一批插件（当前 17 件）。
+**FDE 工具箱全家桶**：安装一个插件，带上一批插件（当前 18 件）。
 
 装进 profile 后，设置里出现「FDE 工具箱」，列出全家桶成员的安装状态：
 缺什么点「安装」（或「补装」一键带齐）；「检查更新」对照 npm latest，
@@ -33,6 +33,7 @@
 | 🧭 [dsh-better-sidebar](https://www.npmjs.com/package/dsh-better-sidebar) | VSCode 式右侧边栏（资源管理器/编辑器/终端/git/浏览器），按会话隔离 |
 | 🧪 [dsh-qa](https://www.npmjs.com/package/dsh-qa) | 本地 QA 测试工作台：需求/用例/缺陷/里程碑全流程、实时看板与日历、AI 登记 + 门禁审批（PolyForm 非商业许可） |
 | 🤝 [@nanmicoder/dsh-agent-teams](https://www.npmjs.com/package/@nanmicoder/dsh-agent-teams) | 一句话组建多代理团队：队长拆解带依赖的任务、持久成员协作、实时任务 DAG 面板 |
+| 📊 [dsh-flow](https://www.npmjs.com/package/@weibaohui/dsh-flow) | 执行流程图：会话执行过程画成四泳道流程图，实时生长、双击下钻子代理，可切列表视图 |
 
 成员清单在 `src/installer.js` 的 `PACK`，加一行即扩包（`range` 取 npm latest 加 `^`），面板与接口自动跟上。
 
@@ -84,6 +85,7 @@ MIT
 
 | 插件版本 | 适配 dsh 版本 | 备注 |
 |---------|--------------|------|
-| 0.3.2 | 0.1.7-rc.2 | 当前版本，已在 @deepseek-ai/dsh@0.1.7-rc.2 下验证运行 |
+| 0.3.2 | 0.1.7-rc.2 | 已在 @deepseek-ai/dsh@0.1.7-rc.2 下验证运行 |
+| 0.3.5 | 0.1.7-rc.2 | 当前版本，已在 @deepseek-ai/dsh@0.1.7-rc.2 下验证运行 |
 
 > **发版约定**：每次发布新版本时，请在上表追加一行，记录该插件版本实际验证所用的 `@deepseek-ai/dsh` 版本。`package.json` 的 `engines.dsh` 声明最低支持版本；本表记录实际验证版本，二者配合使用。

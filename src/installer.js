@@ -143,6 +143,13 @@ const PACK = [
     label: 'Agent 团队',
     desc: '一句话组建多代理团队：队长拆解带依赖的任务，持久子代理协作执行，实时任务 DAG 面板',
   },
+  {
+    name: '@weibaohui/dsh-flow',
+    range: '^0.1.7',
+    icon: '📊',
+    label: '执行流程图',
+    desc: '把会话执行过程画成四泳道流程图：SSE 实时生长、自动跟随，双击下钻子代理，可切列表视图',
+  },
 ]
 
 function packEntry(name) {
