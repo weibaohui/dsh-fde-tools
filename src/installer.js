@@ -150,6 +150,13 @@ const PACK = [
     label: '执行流程图',
     desc: '把会话执行过程画成四泳道流程图：SSE 实时生长、自动跟随，双击下钻子代理，可切列表视图',
   },
+  {
+    name: '@weibaohui/dsh-dashboard',
+    range: '^0.1.2',
+    icon: '📈',
+    label: '使用量仪表盘',
+    desc: '离线扫描会话日志，统计每日/每周/每月 token 与估算费用、模型/工具/技能榜，gridstack+ECharts 卡片可拖拽编排，支持自定义公式与 AI 编排',
+  },
 ]
 
 function packEntry(name) {
