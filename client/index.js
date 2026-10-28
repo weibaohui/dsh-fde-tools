@@ -12,7 +12,14 @@
  * 自包含：只依赖注入的 react（createElement/hooks），不用 react-dom 等平台模块。
  */
 
-const API = '/dsh-fde-tools/api'
+// API 基址随页面走：子路径反代（如 https://host/app/dsh/）下，绝对路径 /dsh-fde-tools/api
+// 会打到站点根而 404。与宿主官方客户端一致，用 document.baseURI 推导（dsh-sync#14 同款）。
+const API = (() => {
+  try {
+    const base = (typeof document !== 'undefined' && document.baseURI) || (typeof location !== 'undefined' ? location.href : '/')
+    return new URL('dsh-fde-tools/api', new URL('.', base)).pathname.replace(/\/+$/, '')
+  } catch { return '/dsh-fde-tools/api' }
+})()
 
 /** 一键重启只在本机直连时可用（服务端同样只认 loopback 直连）；网关/局域网打开则隐藏按钮。 */
 const loopbackHost = () => typeof location === 'object' && (location.hostname === 'localhost' || location.hostname === '::1' || /^127\./.test(location.hostname))
